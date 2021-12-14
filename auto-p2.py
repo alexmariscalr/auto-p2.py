@@ -1,4 +1,4 @@
-#12/12/2021 20:41
+#15/12/2021 0:08
 #! /usr/bin/python
 # coding=utf-8
 
@@ -6,6 +6,7 @@ import sys
 import json
 from subprocess import call, run
 from lxml import etree
+import configparser
 
 #La orden va a ser el segundo argumento del comando ya que el primero será el nombre del script
 orden = str(sys.argv[1])
@@ -24,7 +25,7 @@ def prepare():
         servidores={"num_serv":numero_servidores}
 
     else:
-        print("Error, the number of servers can´t be more than 5")
+        print("Error, the number of servers cannot be more than 5")
         sys.exit
 
     #Guardamos el valor del numero de servidores en el archivo auto-p2.json
@@ -172,6 +173,33 @@ def prepare():
         i2=i2+1
 
 
+########### MEJORA HAPROXY #####################
+
+    call(["sudo virt-copy-out -a lb.qcow2 /etc/haproxy/haproxy.cfg"],shell=True)
+    call(["cp haproxy.cfg haproxy1.cfg"])
+    call(["rm haproxy.cfg"])
+    call(["mv haproxy1.cfg haproxy.cfg"])
+    
+    i3=1
+    pull = ""
+    while i3 <= numero_servidores:
+        pull += "server s" + str(i3) + "10.10.2.1" + str(i) +":80 check\n"
+        i3=i3+1
+
+    with open("haproxy.cfg","w") as f:
+        f.write("\n \
+            frontend lb\n \
+                bind *:80\n \
+                mode http\n \
+                default_backend webservers\n \
+            backend webservers\n \
+                mode http\n \
+                balance roundrobin\n \
+                " )
+        f.write(pull)
+    
+    call(["sudo virt-copy-in -a lb.qcow2 haproxy.cfg /etc/haproxy"])
+
 
 def launch():
     with open("/mnt/tmp/archivos-configuracion/auto-p2.json","r") as read:
@@ -203,6 +231,22 @@ def launch():
          call(["xterm -e 'sudo virsh console s%s' &" % str(i3)], shell=True)
          i3=i3+1
 
+def launchx(servidor):
+
+    call(["cp cdps-vm-base-pc1.qcow2 /mnt/tmp/archivos-configuracion"], shell=True)
+
+    call(["sudo virsh define /mnt/tmp/archivos-configuracion/c1.xml"], shell=True)
+    call(["sudo virsh define /mnt/tmp/archivos-configuracion/lb.xml"], shell=True)
+
+    call(["sudo virsh start c1"], shell=True)
+    call(["xterm -e 'sudo virsh console c1' &"], shell=True)
+    call(["sudo virsh start lb"], shell=True)
+    call(["xterm -e 'sudo virsh console lb' &"], shell=True)
+
+
+    call(["sudo virsh define /mnt/tmp/archivos-configuracion/"+str(servidor)+".xml"], shell=True)
+    call(["sudo virsh start "+str(servidor)], shell=True)
+    call(["xterm -e 'sudo virsh console %s' &" % str(servidor)], shell=True)
 
 def stop():
 
@@ -219,6 +263,8 @@ def stop():
          call(["sudo virsh shutdown s"+str(i)], shell=True)
          i=i+1
 
+def stopx(MV):
+    call(["sudo virsh shutdown "+str(MV)], shell=True)
 
 
 def release():
@@ -258,7 +304,18 @@ if orden=="release":
     release()
     print("Se ha liberado todo el escenario")    
 
+if orden=="launchx":
+    print("Se va a proceder a arrancar el servidor "+str(sys.argv[2]))
+    launchx(servidor=sys.argv[2])
+    print("Se ha arrancado el servidor")
+
+if orden=="stopx":
+    print("Se va a proceder a parar "+str(sys.argv[2]))
+    stopx(MV=sys.argv[2])
+    print("Se ha parado la MV")
 else:
     sys.exit
+
+
 
     
